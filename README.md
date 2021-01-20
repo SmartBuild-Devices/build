@@ -166,7 +166,7 @@ I guess that a diff is worth more than me explaining stuff, so here it is:
  PRODUCT_DEVICE := whyred
  PRODUCT_MANUFACTURER := Xiaomi
 -PRODUCT_NAME := lineage_whyred
-+PRODUCT_NAME ?= $(SMARTBUILD_RELEASE)_whyred
++PRODUCT_NAME := $(SMARTBUILD_RELEASE)_whyred
  PRODUCT_MODEL := Redmi Note 5
 
  PRODUCT_GMS_CLIENTID_BASE := android-xiaomi
