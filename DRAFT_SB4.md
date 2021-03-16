@@ -227,29 +227,9 @@ However, it is heavily recommended to migrate to the new SmartBuild version.
 
 ### Custom sepolicy macros
 
-In cases where devices rely on custom sepolicy macros, such as `hal_attribute_lineage`, we will provide a boilerplate implementation of those to allow the build to compile and then behave as expected at run time.
+In cases where devices rely on custom sepolicy macros, such as `hal_attribute_lineage`, we provide a boilerplate implementation of those to allow the build to compile and then behave as expected at run time.
 
-We will serve sepolicy boilerplate macros at `device/smartbuild/sepolicy` and hopefully we will make them easy to include as a support layer.
-
-Note that Android's sepolicy is expanded using the m4 macroprocessor, so we can check for already defined macros before defining our own boilerplates.
-
-If you need a `hal_attribute_lineage` boilerplate right here and now, save this on your device tree's `sepolicy/public/te_macros`:
-
-```
-#####################################
-# hal_attribute_lineage(hal_name)
-# Originally from LineageOS
-ifdef(`hal_attribute_lineage',,`
-define(`hal_attribute_lineage', `
-attribute hal_$1;
-expandattribute hal_$1 true;
-attribute hal_$1_client;
-expandattribute hal_$1_client true;
-attribute hal_$1_server;
-expandattribute hal_$1_server false;
-')
-')
-```
+To use the boilerplates, you should add `smartbuild-sepolicy-boilerplates` at the top of your `SMARTBUILD_INHERIT_STACK`. You should also `include device/smartbuild/BoardConfigSupport.mk` in your `BoardConfig.mk`
 
 # Unsolved challenges
 
@@ -273,6 +253,8 @@ echo $prefix
 
 Problem is, how do we execute it before our device's `AndroidProducts.mk` is called?
 The first idea would be to have a makefile macro to call, something like `$(call smartbuild-determine-release)`. And then, can we expose this macro to our `AndroidProducts.mk`?
+
+**Update:** This has been merged into the support package. We are still looking for a reliable way of loading the macro for use within `AndroidProducts.mk`.
 
 ## File merging
 
