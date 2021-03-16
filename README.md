@@ -1,6 +1,10 @@
 # SmartBuild
 
-## Table of Contents
+# Hey there! The SmartBuild v4 draft is now published and you can experiment with it NOW! [Check it out!](DRAFT_SB4.md)
+
+Everything regarding v3 can basically be considered out of date as the v4 draft is already stable enough for production use. Please migrate.
+
+## Table of Contents (v3)
 
 - Why it exists
 - How to build on ROMs that support it
