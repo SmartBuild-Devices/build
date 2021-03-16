@@ -29,7 +29,7 @@ In the real world, the directory tree should resemble something like this:
 ├── <... omitted ...>
 └── device/
     ├── smartbuild/
-    │   └── <common utilities for support layers>
+    │   └── <OPTIONAL common utilities for support layers>
     └── your_brand/
          └── your_device/
              ├── smartbuild/
@@ -50,16 +50,210 @@ In the real world, the directory tree should resemble something like this:
              │       ├── BoardConfig.mk
              │       ├── device.mk
              │       ├── properties.mk
-             │       └── revengeos_your_device.mk
+             │       └── smartbuild.mk
              ├── Android.mk
-             └── AndroidProducts.mk
+             ├── AndroidProducts.mk
+             ├── revengeos_your_device.mk -> smartbuild_your_device.mk
+             └── smartbuild_your_device.mk
 ```
 
 Keep in mind that the concept of layer stacks: each support layer is stackable, and the full stack is made by the base device tree plus all the support layers and the target layer at the end closer to the entrypoint (as in `rom_device.mk`).
 
-## Challenges
+## Common support layers
 
-### Defining an accurate combo and entrypoint for `lunch` to use
+Those are the commonized support layers that include rules for a subset of custom ROMs.
+
+They should be prefixed with `-common` to be easily recognizable.
+
+Examples: `aosp-common`, `lineage-common`.
+
+They can be inserted in an inheritance chain by any target support layer.
+
+**THEY MUST NOT INCLUDE `smartbuild.mk`**
+
+## Target support layers
+
+Those are the custom ROM-specific support layers.
+
+They should be named after the ROM's name in the lunch combo. Example: `aosp_<device>` gives us the `aosp` target layer.
+
+**THEY MUST INCLUDE `smartbuild.mk`**
+
+## The `smartbuild.mk` file
+
+This file declares us all the ROM specific variables, like ROM build type (official or community), vendor configuration, inclusion of Google Apps (where supported); but most importantly, it defines the inheritance stack.
+
+An example of such file is as follows:
+```mk
+# Inherit some common AOSP stuff
+SMARTBUILD_RELEASE_CONFIG := vendor/aosp/common.mk
+
+# Define layer inherit stack
+# More generic first, more specific last
+SMARTBUILD_INHERIT_STACK := \
+    our-nocutoutoverlay \
+    aosp-common
+```
+
+In this case, we have two support layers before our target layer, namely `our-nocutoutoverlay` and `aosp-common`; do keep in mind that the order of the stack is important. Generic layers first, specific layers last.
+
+## The entry point: `smartbuild_<device>.mk`
+
+This is the general equivalent to `<rom>_<device>.mk`.
+
+It is similar to what we had in SmartBuild v3.
+
+An example:
+
+```mk
+# Include SmartBuild properties for current release.
+include $(LOCAL_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/smartbuild.mk
+
+# Inherit from those products. Most specific first.
+$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/full_base_telephony.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/product_launched_with_o_mr1.mk)
+
+# Inherit from ROM
+$(call inherit-product, $(SMARTBUILD_RELEASE_CONFIG))
+
+# Inherit from device
+$(call inherit-product, $(LOCAL_PATH)/device.mk)
+
+PRODUCT_BRAND := Some brand
+PRODUCT_DEVICE := device
+PRODUCT_MANUFACTURER := Some manufacturer
+PRODUCT_NAME := $(SMARTBUILD_RELEASE)_device
+PRODUCT_MODEL := Some model
+< ... other content is omitted ... >
+```
+
+Notice the usage of `SMARTBUILD_RELEASE` and `SMARTBUILD_RELEASE_CONFIG`; those variables dynamically shape the entry point to serve our purposes well.
+
+## Glues
+
+### `rom_device.mk`
+
+Do the following in a console, for each new ROM you support:
+```shell=/bin/sh
+$ ln -s smartbuild_device.mk rom_device.mk
+```
+This is currently unavoidable. Moving the entry point inside the `smartbuild/` folder makes soong go crazy; defining `smartbuild_device.mk` as the only entry makefile gives out an error because Android's build system expects lunch combos and makefiles to go coupled.
+
+### `AndroidProducts.mk`
+
+```mk
+PRODUCT_MAKEFILES := \
+    $(LOCAL_DIR)/$(SMARTBUILD_RELEASE)_device.mk
+
+COMMON_LUNCH_CHOICES := \
+    $(SMARTBUILD_RELEASE)_device-user \
+    $(SMARTBUILD_RELEASE)_device-userdebug \
+    $(SMARTBUILD_RELEASE)_device-eng
+```
+
+### `Android.mk`
+
+This is an example and most likely it will not fit every device tree.
+
+You are welcome to take inspiration from this but do your own modifications when implementing this logic to your trees.
+
+```mk
+LOCAL_PATH := $(call my-dir)
+
+ifeq ($(TARGET_DEVICE),device)
+  # Include all makefiles NOT in smartbuild/
+  temp_find_leaves_excludes=$(FIND_LEAVES_EXCLUDES)
+  FIND_LEAVES_EXCLUDES := $(addprefix --prune=, smartbuild)
+
+  subdir_makefiles=$(call first-makefiles-under,$(LOCAL_PATH))
+  $(foreach mk,$(subdir_makefiles),$(info including $(mk) ...)$(eval include $(mk)))
+
+  FIND_LEAVES_EXCLUDES := $(temp_find_leaves_excludes)
+
+  # Traverse SmartBuild inheritance tree to inherit the "active" makefiles
+  $(foreach layer,$(SMARTBUILD_INHERIT_STACK), \
+    $(if $(wildcard $(LOCAL_PATH)/smartbuild/$(layer)/Android.mk), \
+      $(info including $(LOCAL_PATH)/smartbuild/$(layer)/Android.mk ...) \
+      $(eval include $(LOCAL_PATH)/smartbuild/$(layer)/Android.mk) \
+    ,) \
+  )
+
+  # Add the ROM specific Android.mk to the roster
+  $(if $(wildcard $(LOCAL_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/Android.mk), \
+    $(info including $(LOCAL_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/Android.mk ...) \
+    $(eval include $(LOCAL_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/Android.mk) \
+  ,)
+endif
+```
+
+### `device.mk`
+
+Add this at the end of the file, right before importing `vendor`.
+
+```mk
+# Inherit from SmartBuild layer stack
+$(foreach layer, $(SMARTBUILD_INHERIT_STACK), \
+    $(call inherit-product-if-exists, $(DEVICE_PATH)/smartbuild/$(layer)/device.mk) \
+)
+$(call inherit-product-if-exists, $(DEVICE_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/device.mk)
+```
+
+### `BoardConfig.mk`
+
+Add this at the end of the file, right before importing `vendor`.
+
+```mk
+# Inherit from SmartBuild layer stack
+$(foreach layer,$(SMARTBUILD_INHERIT_STACK), \
+  $(if $(wildcard $(DEVICE_PATH)/smartbuild/$(layer)/BoardConfig.mk), \
+    $(eval include $(DEVICE_PATH)/smartbuild/$(layer)/BoardConfig.mk) \
+  ,) \
+)
+$(if $(wildcard $(DEVICE_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/BoardConfig.mk), \
+  $(eval include $(DEVICE_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/BoardConfig.mk) \
+,)
+```
+
+### Other files, common trees
+
+Please refer to the SmartBuild-Devices GitHub organization for more examples and usage within common trees.
+
+### Interoperability with SmartBuild v3
+
+Both versions (v3 and v4) rely on `SMARTBUILD_RELEASE` and they are interoperable to some degree.
+
+However, it is heavily recommended to migrate to the new SmartBuild version.
+
+### Custom sepolicy macros
+
+In cases where devices rely on custom sepolicy macros, such as `hal_attribute_lineage`, we will provide a boilerplate implementation of those to allow the build to compile and then behave as expected at run time.
+
+We will serve sepolicy boilerplate macros at `device/smartbuild/sepolicy` and hopefully we will make them easy to include as a support layer.
+
+Note that Android's sepolicy is expanded using the m4 macroprocessor, so we can check for already defined macros before defining our own boilerplates.
+
+If you need a `hal_attribute_lineage` boilerplate right here and now, save this on your device tree's `sepolicy/public/te_macros`:
+
+```
+#####################################
+# hal_attribute_lineage(hal_name)
+# Originally from LineageOS
+ifdef(`hal_attribute_lineage',,`
+define(`hal_attribute_lineage', `
+attribute hal_$1;
+expandattribute hal_$1 true;
+attribute hal_$1_client;
+expandattribute hal_$1_client true;
+attribute hal_$1_server;
+expandattribute hal_$1_server false;
+')
+')
+```
+
+# Unsolved challenges
+
+## Defining an accurate combo and entrypoint for `lunch` to use
 
 SmartBuild allows multiple projects to be built with the same device trees. This means that we do not have a clear entry point for each project, and that we are forced to determine it dynamically.
 
@@ -80,55 +274,12 @@ echo $prefix
 Problem is, how do we execute it before our device's `AndroidProducts.mk` is called?
 The first idea would be to have a makefile macro to call, something like `$(call smartbuild-determine-release)`. And then, can we expose this macro to our `AndroidProducts.mk`?
 
-There is also another problem: are we totally sure that things are not going to break that much if we have the entrypoint in the support layer, compared to having it as a glue in a common location such as the device tree folder?
-
-### `Android.mk` is a problem
-
-To be precise, the one at `device/your_brand/your_device` is, and it could cause duplicate/broken build rules if defined "the common way".
-
-Thing is, we have the `smartbuild/` folder containing our support layers, but out of all of those, only the required ones shall be "active", and therefore if our beloved makefile calls all the other `Android.mk` files under it, it will also be including those that are not needed in some builds.
-
-So, the correct way to handle `Android.mk` would be, in steps:
-- Include all the makefiles in the base device tree, except those in the `smartbuild/` folder
-- Include `Android.mk` for each support layer involved, in order, from the one closer to the base device tree (common) to the one closer to the target support layer, in the layer stack.
-- Include `Android.mk` of the target support layer as the last one.
-
-### `BoardConfig.mk` is a problem
-
-We need a glue that finds and then calls the `BoardConfig.mk` closer to the target support layer. At the same time, the glue shall not be included in the base board configuration file, as this one shall be included by the ones in the support layers, in relation to the layer stack.
-
-### File merging
+## File merging
 
 In cases where file merging is needed, and those files are not merged by the build system at compile time (eg. overlays, manifests) we might have a hard time merging those programmatically.
 
 It would be best to just override the files with user-merged ones, using makefiles.
 
-### Custom sepolicy macros
+# Proof of concept
 
-In cases where devices rely on custom sepolicy macros, such as `hal_attribute_lineage`, we should provide a boilerplate implementation of those to allow the build to compile and then behave as expected at run time.
-
-We could serve sepolicy boilerplate macros at `device/smartbuild/sepolicy`.
-
-Note that Android's sepolicy is expanded using the m4 macroprocessor, so we can check for already defined macros before defining our own boilerplates.
-
-Example:
-
-```
-#####################################
-# hal_attribute_lineage(hal_name)
-# Originally from LineageOS
-ifdef(`hal_attribute_lineage',,`
-define(`hal_attribute_lineage', `
-attribute hal_$1;
-expandattribute hal_$1 true;
-attribute hal_$1_client;
-expandattribute hal_$1_client true;
-attribute hal_$1_server;
-expandattribute hal_$1_server false;
-')
-')
-```
-
-## Proof of concept
-
-There are no PoC device trees yet, since it is unclear how to solve major problems with makefiles. Once those are met with a solution, then this section will be updated.
+Please check the organization for proof of concept device and common trees.
