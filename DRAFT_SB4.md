@@ -32,7 +32,6 @@ In the real world, the directory tree should resemble something like this:
     │   └── <common utilities for support layers>
     └── your_brand/
          └── your_device/
-
              ├── smartbuild/
              │   ├── aosp-common/
              │   │   ├── overlays/
