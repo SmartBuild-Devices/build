@@ -75,9 +75,17 @@ They can be inserted in an inheritance chain by any target support layer.
 
 Those are the custom ROM-specific support layers.
 
-They should be named after the ROM's name in the lunch combo. Example: `aosp_<device>` gives us the `aosp` target layer.
+They are commonly named after the ROM's name in the lunch combo. Example: `aosp_<device>` gives us the `aosp` target layer. However, they can be named arbitrarily.
 
 **THEY MUST INCLUDE `smartbuild.mk`**
+
+## The `SMARTBUILD_LUNCH_OPT` variable
+
+This variable is important as it is used when defining lunch combos.
+
+If it is not set ahead of time by either the maintainer or the ROM developers, it must be defaulted to the value held in `SMARTBUILD_RELEASE` before passing it to `PRODUCT_MAKEFILES` and `COMMON_LUNCH_CHOICES` in the `AndroidProducts.mk` file.
+
+This allows to make distinction between two or more custom ROMs that use the same lunch combo name to build. It is remarkably common to see vanilla AOSP based ROMs making use of the `aosp` name for their lunch configurations.
 
 ## The `smartbuild.mk` file
 
@@ -123,12 +131,12 @@ $(call inherit-product, $(LOCAL_PATH)/device.mk)
 PRODUCT_BRAND := Some brand
 PRODUCT_DEVICE := device
 PRODUCT_MANUFACTURER := Some manufacturer
-PRODUCT_NAME := $(SMARTBUILD_RELEASE)_device
+PRODUCT_NAME := $(SMARTBUILD_LUNCH_OPT)_device
 PRODUCT_MODEL := Some model
 < ... other content is omitted ... >
 ```
 
-Notice the usage of `SMARTBUILD_RELEASE` and `SMARTBUILD_RELEASE_CONFIG`; those variables dynamically shape the entry point to serve our purposes well.
+Notice the usage of `SMARTBUILD_RELEASE`, `SMARTBUILD_LUNCH_OPT` and `SMARTBUILD_RELEASE_CONFIG`; those variables dynamically shape the entry point to serve our purposes well.
 
 ## Glues
 
@@ -144,12 +152,12 @@ This is currently unavoidable. Moving the entry point inside the `smartbuild/` f
 
 ```mk
 PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/$(SMARTBUILD_RELEASE)_device.mk
+    $(LOCAL_DIR)/$(SMARTBUILD_LUNCH_OPT)_device.mk
 
 COMMON_LUNCH_CHOICES := \
-    $(SMARTBUILD_RELEASE)_device-user \
-    $(SMARTBUILD_RELEASE)_device-userdebug \
-    $(SMARTBUILD_RELEASE)_device-eng
+    $(SMARTBUILD_LUNCH_OPT)_device-user \
+    $(SMARTBUILD_LUNCH_OPT)_device-userdebug \
+    $(SMARTBUILD_LUNCH_OPT)_device-eng
 ```
 
 ### `Android.mk`
@@ -231,15 +239,11 @@ In cases where devices rely on custom sepolicy macros, such as `hal_attribute_li
 
 To use the boilerplates, you should add `smartbuild-sepolicy-boilerplates` at the top of your `SMARTBUILD_INHERIT_STACK`. You should also `include device/smartbuild/BoardConfigSupport.mk` in your `BoardConfig.mk`
 
-# Unsolved challenges
-
 ## Defining an accurate combo and entrypoint for `lunch` to use
 
-SmartBuild allows multiple projects to be built with the same device trees. This means that we do not have a clear entry point for each project, and that we are forced to determine it dynamically.
+SmartBuild allows multiple projects to be built with the same device trees. This means that we do not have a clear `lunch` combo definition for each project, and that we are forced to determine it dynamically.
 
-This is currently done via the `SMARTBUILD_RELEASE` environment variable.
-
-The best case scenario would be to let ROMs define this variable in the vendor `envsetup.sh`, however we cannot count on projects supporting SmartBuild officially, so we need a "plan B".
+The best case scenario would be to let ROMs define the `SMARTBUILD_LUNCH_OPT` variable in their vendor `envsetup.sh`, however we cannot count on projects supporting SmartBuild officially, so we need a fallback plan.
 
 Proposed by @AgentFabulous, there is this handy dandy shell script that does the job.
 
@@ -251,10 +255,11 @@ fi
 echo $prefix
 ```
 
-Problem is, how do we execute it before our device's `AndroidProducts.mk` is called?
-The first idea would be to have a makefile macro to call, something like `$(call smartbuild-determine-release)`. And then, can we expose this macro to our `AndroidProducts.mk`?
+This "heuristic" way of determining the right `lunch` combo has been merged into the support package.
 
-**Update:** This has been merged into the support package. We are still looking for a reliable way of loading the macro for use within `AndroidProducts.mk`.
+You can use it by including `device/smartbuild/make/product.mk` and calling `$(call smartbuild-determine-lunch-opt)` anywhere before invoking `PRODUCT_MAKEFILES` and `COMMON_LUNCH_CHOICES`.
+
+# Unsolved challenges
 
 ## File merging
 
