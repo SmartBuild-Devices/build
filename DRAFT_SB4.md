@@ -101,6 +101,11 @@ SMARTBUILD_RELEASE_CONFIG := vendor/aosp/common.mk
 SMARTBUILD_INHERIT_STACK := \
     our-nocutoutoverlay \
     aosp-common
+
+# In case your ROM does not have support
+# for SmartBuild, you can include LUNCH_OPT
+# here too!
+#SMARTBUILD_LUNCH_OPT := aosp
 ```
 
 In this case, we have two support layers before our target layer, namely `our-nocutoutoverlay` and `aosp-common`; do keep in mind that the order of the stack is important. Generic layers first, specific layers last.
@@ -114,9 +119,6 @@ It is similar to what we had in SmartBuild v3.
 An example:
 
 ```mk
-# Include SmartBuild properties for current release.
-include $(LOCAL_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/smartbuild.mk
-
 # Inherit from those products. Most specific first.
 $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/full_base_telephony.mk)
@@ -136,7 +138,7 @@ PRODUCT_MODEL := Some model
 < ... other content is omitted ... >
 ```
 
-Notice the usage of `SMARTBUILD_RELEASE`, `SMARTBUILD_LUNCH_OPT` and `SMARTBUILD_RELEASE_CONFIG`; those variables dynamically shape the entry point to serve our purposes well.
+Notice the usage of `SMARTBUILD_RELEASE`, `SMARTBUILD_LUNCH_OPT` and `SMARTBUILD_RELEASE_CONFIG`; those variables are the core of all the SmartBuild system. Therefore, ensuring that they are always correctly set is our main goal.
 
 ## Glues
 
@@ -151,6 +153,14 @@ This is currently unavoidable. Moving the entry point inside the `smartbuild/` f
 ### `AndroidProducts.mk`
 
 ```mk
+# Include SmartBuild properties for current release.
+include $(LOCAL_PATH)/smartbuild/$(SMARTBUILD_RELEASE)/smartbuild.mk
+
+# Default LUNCH_OPT to RELEASE in case it was not set (v3 back compat)
+ifndef SMARTBUILD_LUNCH_OPT
+    SMARTBUILD_LUNCH_OPT := $(SMARTBUILD_RELEASE)
+endif
+
 PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/$(SMARTBUILD_LUNCH_OPT)_device.mk
 
@@ -159,6 +169,8 @@ COMMON_LUNCH_CHOICES := \
     $(SMARTBUILD_LUNCH_OPT)_device-userdebug \
     $(SMARTBUILD_LUNCH_OPT)_device-eng
 ```
+
+It is important to note how `smartbuild.mk` is loaded here. This ensures that all our variables are present at a very early stage in the `lunch` process, and allows us to handle things like the `lunch` combo on unsupported ROMs in a clean fashion.
 
 ### `Android.mk`
 
