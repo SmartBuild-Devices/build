@@ -183,10 +183,10 @@ LOCAL_PATH := $(call my-dir)
 
 ifeq ($(TARGET_DEVICE),device)
   # Include all makefiles NOT in smartbuild/
-  temp_find_leaves_excludes=$(FIND_LEAVES_EXCLUDES)
+  temp_find_leaves_excludes := $(FIND_LEAVES_EXCLUDES)
   FIND_LEAVES_EXCLUDES := $(addprefix --prune=, smartbuild)
 
-  subdir_makefiles=$(call first-makefiles-under,$(LOCAL_PATH))
+  subdir_makefiles = $(call first-makefiles-under,$(LOCAL_PATH))
   $(foreach mk,$(subdir_makefiles),$(info including $(mk) ...)$(eval include $(mk)))
 
   FIND_LEAVES_EXCLUDES := $(temp_find_leaves_excludes)
