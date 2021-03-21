@@ -63,7 +63,7 @@ Keep in mind that the concept of layer stacks: each support layer is stackable, 
 
 Those are the commonized support layers that include rules for a subset of custom ROMs.
 
-They should be prefixed with `-common` to be easily recognizable.
+They should be suffixed with `-common` to be easily recognizable.
 
 Examples: `aosp-common`, `lineage-common`.
 
